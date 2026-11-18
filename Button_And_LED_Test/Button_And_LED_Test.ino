@@ -1,4 +1,3 @@
-
 // KSP CONTROLLER - BUTTON MATRIX & LED MATRIX
 
 // ------------------------------------------------------------
@@ -12,7 +11,7 @@ const uint8_t highPins[8] = {
 };
 
 byte buttonBitArray[5] = {0, 0, 0, 0, 0};
-byte previousBitArray[5] = {0, 0, 0, 0, 0};
+byte ledBitArray[5] = {0, 0, 0, 0, 0};
 
 const char* buttonNames[40] = {
   "Stage", "Abort", "Lights", "Brakes",
@@ -51,7 +50,7 @@ const uint8_t ledNegativePins[5] = {
 // ------------------------------------------------------------
 
 // Action Groups
-bool agState[10] = {0};
+uint8_t agLedIdx[10] = {0,1,2,4,3,5,7,6,22,23};
 
 // Cycling displays
 uint8_t velocityMode = 0;
@@ -125,26 +124,27 @@ void setup() {
 void loop() {
 
   scanMatrix();
-  updateLEDs();
+  inputProcessing();
+  scanLEDs();
 }
 
 
 // ------------------------------------------------------------
-// 6. BUTTON MATRIX SCANNING
+// 6. BUTTON MATRIX SCANNING                                       // The code is okay, need physical diodes on each switch to prevent cross-feed :(
 // ------------------------------------------------------------
 
 void scanMatrix() {
 
   for (uint8_t bit = 0; bit < 8; bit++) {
-
     digitalWrite(highPins[bit], HIGH);
 
     for (uint8_t byteIdx = 0; byteIdx < 5; byteIdx++) {
+      bool isPressed = (digitalRead(sensePins[byteIdx]) == HIGH);
+      bitWrite(buttonBitArray[byteIdx], bit, isPressed);
 
-      if (digitalRead(sensePins[byteIdx]) == HIGH) {
-        buttonBitArray[byteIdx] |= (1 << bit);
+      /*if (isPressed) {
         Serial.println(buttonNames[byteIdx * 8 + bit]);
-      }
+      }*/
     }
 
     digitalWrite(highPins[bit], LOW);
@@ -152,25 +152,44 @@ void scanMatrix() {
 }
 
 // ------------------------------------------------------------
-// 7. LED MATRIX UPDATE
-// ------------------------------------------------------------                        NEED TO HAVE LEDs REFERENCE BUTTON BYTES OR ANOTHER ARRAY OF BITS THAT TELL THEM OT BE ON OR OFF
+// 7. INPUT PROCESSING
+// ------------------------------------------------------------
 
-void updateLEDs(){
+void inputProcessing(){
+  /* Set the ledBitArray bits depending on what inputs were just recieved
+     Note that the two arrays do not index nicely with each other...   */
+
+  
+  for (uint8_t i = 0; i <  10; i++)  {
+    // The action group buttons (Idx: 11 -> 20)
+    uint8_t buttonIndex = i + 11;
+    bitWrite(ledBitArray[agLedIdx[i] / 8], agLedIdx[i] % 8, bitRead(buttonBitArray[buttonIndex / 8], buttonIndex % 8)); //Set the LED at the idx using the corresponding value from  the buttonIndex
+  }
+
+}
+
+// ------------------------------------------------------------
+// 8. LED MATRIX SCANNING
+// ------------------------------------------------------------
+
+void scanLEDs(){ // Only 1 LED will be on at any given moment, so they must cycle through very quickly to give a solid appearance
 
   for (uint8_t posIdx = 0; posIdx < 8; posIdx++) {
     for (uint8_t gndIdx = 0; gndIdx < 5; gndIdx++) {
+      if (bitRead(ledBitArray[gndIdx], posIdx)){   // If the LED is supposed to be on, turn it on for this scan cycle 
 
-      digitalWrite(ledPositivePins[posIdx], HIGH);
-      digitalWrite(ledNegativePins[gndIdx], LOW);
+        digitalWrite(ledPositivePins[posIdx], HIGH);
+        digitalWrite(ledNegativePins[gndIdx], LOW);
 
-      delay(0.01);
+        delay(0.01);
 
-      digitalWrite(ledPositivePins[posIdx], LOW);
-      digitalWrite(ledNegativePins[gndIdx], HIGH);
+        digitalWrite(ledPositivePins[posIdx], LOW);
+        digitalWrite(ledNegativePins[gndIdx], HIGH);
 
-      delay(0.01);
-    
+        delay(0.01);
+      } else {
+        delay(0.02);
+      }
     }
   }
-
 }
